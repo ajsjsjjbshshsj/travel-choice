@@ -1,0 +1,20 @@
+server:
+  port: 8080
+
+spring:
+  config:
+    import: optional:file:../.env[.properties]
+  datasource:
+    url: jdbc:mysql://${MYSQL_HOST:127.0.0.1}:${MYSQL_PORT:3306}/${MYSQL_DATABASE:travel_decision_platform}?useUnicode=true&characterEncoding=UTF-8&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true
+    username: ${MYSQL_USER:root}
+    password: ${MYSQL_PASSWORD:1234}
+    driver-class-name: com.mysql.cj.jdbc.Driver
+
+mybatis:
+  configuration:
+    map-underscore-to-camel-case: true
+
+api:
+  amap:
+    key: ${AMAP_KEY:d4dca152db9d7e5700419f1b301659e3}
+    host: ${AMAP_HOST:https://restapi.amap.com}

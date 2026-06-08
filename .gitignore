@@ -1,0 +1,29 @@
+# Java
+target/
+*.class
+*.jar
+*.war
+
+# Node
+node_modules/
+dist/
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# IDE
+.idea/
+.vscode/
+
+# Env
+.env
+
+# Claude
+.claude/
+
+# Logs
+*.log
+logs/
