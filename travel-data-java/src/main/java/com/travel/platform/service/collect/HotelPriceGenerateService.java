@@ -8,6 +8,7 @@ import com.travel.platform.entity.HotelPriceDetail;
 import com.travel.platform.mapper.DestinationMapper;
 import com.travel.platform.mapper.HotelPriceMapper;
 import com.travel.platform.service.JobLogService;
+import com.travel.platform.service.RedisCacheService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -26,6 +27,7 @@ public class HotelPriceGenerateService {
     private final DestinationMapper destinationMapper;
     private final HotelPriceMapper hotelPriceMapper;
     private final JobLogService jobLogService;
+    private final RedisCacheService redisCacheService;
 
     /**
      * 为所有活跃目的地生成酒店参考价格
@@ -56,6 +58,8 @@ public class HotelPriceGenerateService {
             if (!priceList.isEmpty()) {
                 hotelPriceMapper.deleteByDateRange(checkinDate.toString(), checkoutDate.toString());
                 hotelPriceMapper.batchInsert(priceList);
+                redisCacheService.evictByPrefix("recommend:");
+                redisCacheService.evictByPrefix("dashboard:");
             }
 
             log.info("酒店价格生成完成: 写入 {} 条数据", priceList.size());
@@ -91,6 +95,8 @@ public class HotelPriceGenerateService {
             if (!priceList.isEmpty()) {
                 hotelPriceMapper.deleteByDateRange(checkinDate.toString(), checkoutDate.toString());
                 hotelPriceMapper.batchInsert(priceList);
+                redisCacheService.evictByPrefix("recommend:");
+                redisCacheService.evictByPrefix("dashboard:");
             }
 
             log.info("推荐酒店价格生成完成: 写入 {} 条数据", priceList.size());

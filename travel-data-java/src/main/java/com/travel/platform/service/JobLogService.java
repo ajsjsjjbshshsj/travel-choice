@@ -18,6 +18,10 @@ public class JobLogService {
     }
 
     public EtlJobLog startJob(String jobName, String jobType, String jobDesc, LocalDate dataDate) {
+        return startJob(jobName, jobType, jobDesc, dataDate, null);
+    }
+
+    public EtlJobLog startJob(String jobName, String jobType, String jobDesc, LocalDate dataDate, String requestId) {
         EtlJobLog log = new EtlJobLog();
         log.setJobName(jobName);
         log.setJobType(jobType);
@@ -26,6 +30,7 @@ public class JobLogService {
         log.setStatus("RUNNING");
         log.setRowCount(0);
         log.setDataDate(dataDate);
+        log.setRequestId(requestId);
         log.setTriggerType("API");
 
         etlJobLogMapper.insert(log);

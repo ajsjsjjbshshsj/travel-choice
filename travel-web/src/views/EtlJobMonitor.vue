@@ -1,80 +1,74 @@
 <template>
   <div class="page">
-    <!-- 统计卡片 -->
     <el-row :gutter="16" class="stat-row">
       <el-col :span="6">
         <el-card shadow="hover" class="mini-stat">
           <div class="mini-stat-value">{{ jobs.length }}</div>
-          <div class="mini-stat-label">总任务数</div>
+          <div class="mini-stat-label">Total Jobs</div>
         </el-card>
       </el-col>
       <el-col :span="6">
         <el-card shadow="hover" class="mini-stat">
-          <div class="mini-stat-value" style="color: #67C23A">{{ successCount }}</div>
-          <div class="mini-stat-label">成功</div>
+          <div class="mini-stat-value success">{{ successCount }}</div>
+          <div class="mini-stat-label">Success</div>
         </el-card>
       </el-col>
       <el-col :span="6">
         <el-card shadow="hover" class="mini-stat">
-          <div class="mini-stat-value" style="color: #F56C6C">{{ failedCount }}</div>
-          <div class="mini-stat-label">失败</div>
+          <div class="mini-stat-value danger">{{ failedCount }}</div>
+          <div class="mini-stat-label">Failed</div>
         </el-card>
       </el-col>
       <el-col :span="6">
         <el-card shadow="hover" class="mini-stat">
-          <div class="mini-stat-value" style="color: #409EFF">{{ runningCount }}</div>
-          <div class="mini-stat-label">运行中</div>
+          <div class="mini-stat-value running">{{ runningCount }}</div>
+          <div class="mini-stat-label">Running</div>
         </el-card>
       </el-col>
     </el-row>
 
-    <!-- 操作栏 -->
     <div class="toolbar">
-      <div class="toolbar-left">
-        <el-select v-model="statusFilter" placeholder="状态筛选" clearable style="width: 160px">
-          <el-option label="全部" value="" />
-          <el-option label="成功" value="SUCCESS" />
-          <el-option label="失败" value="FAILED" />
-          <el-option label="运行中" value="RUNNING" />
-        </el-select>
-      </div>
+      <el-select v-model="statusFilter" placeholder="Status" clearable style="width: 160px">
+        <el-option label="All" value="" />
+        <el-option label="Success" value="SUCCESS" />
+        <el-option label="Failed" value="FAILED" />
+        <el-option label="Running" value="RUNNING" />
+      </el-select>
       <div class="toolbar-right">
-        <el-switch v-model="autoRefresh" active-text="自动刷新" style="margin-right: 16px" />
-        <el-button type="primary" :icon="Refresh" @click="fetchData" :loading="loading">刷新</el-button>
+        <el-switch v-model="autoRefresh" active-text="Auto refresh" />
+        <el-button type="primary" :icon="Refresh" @click="fetchData" :loading="loading">Refresh</el-button>
       </div>
     </div>
 
-    <!-- 数据表格 -->
     <el-table :data="filteredJobs" stripe v-loading="loading" style="width: 100%">
-      <el-table-column prop="jobName" label="任务名称" width="180" />
-      <el-table-column prop="jobDesc" label="描述" min-width="160" show-overflow-tooltip />
-      <el-table-column label="状态" width="100" align="center">
+      <el-table-column prop="jobName" label="Job Name" width="190" />
+      <el-table-column prop="jobType" label="Type" width="110" />
+      <el-table-column prop="requestId" label="Request ID" min-width="180" show-overflow-tooltip />
+      <el-table-column prop="jobDesc" label="Description" min-width="180" show-overflow-tooltip />
+      <el-table-column label="Status" width="100" align="center">
         <template #default="{ row }">
           <el-tag :type="statusTagType(row.status)" size="small">{{ row.status }}</el-tag>
         </template>
       </el-table-column>
-      <el-table-column label="开始时间" width="170">
+      <el-table-column label="Start Time" width="170">
         <template #default="{ row }">{{ formatTime(row.startTime) }}</template>
       </el-table-column>
-      <el-table-column label="结束时间" width="170">
+      <el-table-column label="End Time" width="170">
         <template #default="{ row }">{{ formatTime(row.endTime) }}</template>
       </el-table-column>
-      <el-table-column label="耗时" width="90" align="center">
-        <template #default="{ row }">
-          <span v-if="row.startTime && row.endTime">{{ calcDuration(row.startTime, row.endTime) }}s</span>
-          <span v-else style="color: #409EFF">--</span>
-        </template>
+      <el-table-column label="Duration" width="110" align="center">
+        <template #default="{ row }">{{ formatDuration(row) }}</template>
       </el-table-column>
-      <el-table-column prop="rowCount" label="处理行数" width="100" align="center" />
-      <el-table-column label="触发方式" width="100" align="center">
+      <el-table-column prop="rowCount" label="Rows" width="90" align="center" />
+      <el-table-column label="Trigger" width="100" align="center">
         <template #default="{ row }">
           <el-tag type="info" size="small">{{ row.triggerType || '--' }}</el-tag>
         </template>
       </el-table-column>
-      <el-table-column label="错误信息" min-width="180">
+      <el-table-column label="Error" min-width="220" show-overflow-tooltip>
         <template #default="{ row }">
-          <span v-if="row.errorMessage" style="color: #F56C6C">{{ row.errorMessage }}</span>
-          <span v-else style="color: #C0C4CC">--</span>
+          <span v-if="row.errorMessage" class="danger">{{ row.errorMessage }}</span>
+          <span v-else class="muted">--</span>
         </template>
       </el-table-column>
     </el-table>
@@ -95,7 +89,6 @@ let refreshTimer = null
 const successCount = computed(() => jobs.value.filter(j => j.status === 'SUCCESS').length)
 const failedCount = computed(() => jobs.value.filter(j => j.status === 'FAILED').length)
 const runningCount = computed(() => jobs.value.filter(j => j.status === 'RUNNING').length)
-
 const filteredJobs = computed(() => {
   if (!statusFilter.value) return jobs.value
   return jobs.value.filter(j => j.status === statusFilter.value)
@@ -104,47 +97,47 @@ const filteredJobs = computed(() => {
 function statusTagType(status) {
   if (status === 'SUCCESS') return 'success'
   if (status === 'FAILED') return 'danger'
-  if (status === 'RUNNING') return ''
+  if (status === 'RUNNING') return 'warning'
   return 'info'
 }
 
-function formatTime(t) {
-  if (!t) return '--'
-  // Handle ISO or array format
-  if (Array.isArray(t)) {
-    const [y, m, d, h = 0, mi = 0, s = 0] = t
+function formatTime(value) {
+  if (!value) return '--'
+  if (Array.isArray(value)) {
+    const [y, m, d, h = 0, mi = 0, s = 0] = value
     return `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')} ${String(h).padStart(2, '0')}:${String(mi).padStart(2, '0')}:${String(s).padStart(2, '0')}`
   }
-  return String(t).replace('T', ' ').slice(0, 19)
+  return String(value).replace('T', ' ').slice(0, 19)
 }
 
 function calcDuration(start, end) {
-  try {
-    const s = new Date(Array.isArray(start) ? formatTime(start) : start)
-    const e = new Date(Array.isArray(end) ? formatTime(end) : end)
-    return Math.round((e - s) / 1000)
-  } catch {
-    return '--'
-  }
+  const startDate = new Date(Array.isArray(start) ? formatTime(start) : start)
+  const endDate = new Date(Array.isArray(end) ? formatTime(end) : end)
+  return Math.max(0, Math.round((endDate - startDate) / 1000))
+}
+
+function formatDuration(row) {
+  if (row.durationSeconds != null) return `${row.durationSeconds}s`
+  if (row.startTime && row.endTime) return `${calcDuration(row.startTime, row.endTime)}s`
+  return '--'
 }
 
 async function fetchData() {
   loading.value = true
   try {
-    const res = await getEtlJobs()
-    jobs.value = Array.isArray(res) ? res : (res.data || [])
+    jobs.value = await getEtlJobs()
   } catch (e) {
-    ElMessage.error('获取 ETL 任务列表失败')
+    ElMessage.error('Failed to load ETL jobs')
     console.error(e)
   } finally {
     loading.value = false
   }
 }
 
-watch(autoRefresh, (val) => {
-  if (val) {
+watch(autoRefresh, (enabled) => {
+  if (enabled) {
     refreshTimer = setInterval(fetchData, 30000)
-  } else {
+  } else if (refreshTimer) {
     clearInterval(refreshTimer)
     refreshTimer = null
   }
@@ -172,15 +165,31 @@ onUnmounted(() => {
 }
 
 .mini-stat-value {
-  font-size: 32px;
+  font-size: 30px;
   font-weight: 700;
   color: #303133;
 }
 
 .mini-stat-label {
-  font-size: 14px;
+  font-size: 13px;
   color: #909399;
   margin-top: 4px;
+}
+
+.success {
+  color: #67C23A;
+}
+
+.danger {
+  color: #F56C6C;
+}
+
+.running {
+  color: #409EFF;
+}
+
+.muted {
+  color: #C0C4CC;
 }
 
 .toolbar {
@@ -193,5 +202,6 @@ onUnmounted(() => {
 .toolbar-right {
   display: flex;
   align-items: center;
+  gap: 16px;
 }
 </style>

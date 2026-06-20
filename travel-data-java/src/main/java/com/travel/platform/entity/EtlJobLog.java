@@ -16,6 +16,8 @@ public class EtlJobLog {
     private String status;
     private Integer rowCount;
     private LocalDate dataDate;
+    private String requestId;
+    private Long durationSeconds;
     private String errorMessage;
     private String triggerType;
     private LocalDateTime createdAt;

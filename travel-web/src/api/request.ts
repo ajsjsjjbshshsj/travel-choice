@@ -5,7 +5,6 @@ const request = axios.create({
   timeout: 30000
 })
 
-// 请求拦截
 request.interceptors.request.use(
   (config) => {
     const token = localStorage.getItem('token')
@@ -17,11 +16,19 @@ request.interceptors.request.use(
   (error) => Promise.reject(error)
 )
 
-// 响应拦截
 request.interceptors.response.use(
-  (response) => response.data,
+  (response) => {
+    const body = response.data
+    if (body && typeof body === 'object' && 'code' in body && 'data' in body) {
+      if (body.code === 200) {
+        return body.data
+      }
+      return Promise.reject(new Error(body.message || 'Request failed'))
+    }
+    return body
+  },
   (error) => {
-    const msg = error.response?.data?.message || error.message || '请求失败'
+    const msg = error.response?.data?.message || error.message || 'Request failed'
     console.error('[API Error]', msg)
     return Promise.reject(error)
   }

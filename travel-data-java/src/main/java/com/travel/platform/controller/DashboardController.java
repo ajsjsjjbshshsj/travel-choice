@@ -1,5 +1,6 @@
 package com.travel.platform.controller;
 
+import com.travel.platform.common.result.ApiResponse;
 import com.travel.platform.dto.DashboardStats;
 import com.travel.platform.service.DashboardService;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -17,7 +18,7 @@ public class DashboardController {
     }
 
     @GetMapping("/stats")
-    public DashboardStats getStats() {
-        return dashboardService.getStats();
+    public ApiResponse<DashboardStats> getStats() {
+        return ApiResponse.success(dashboardService.getStats());
     }
 }

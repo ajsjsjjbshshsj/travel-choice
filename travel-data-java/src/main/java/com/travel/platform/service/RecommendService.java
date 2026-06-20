@@ -1,7 +1,9 @@
 package com.travel.platform.service;
 
+import com.fasterxml.jackson.core.type.TypeReference;
 import com.travel.platform.dto.RecommendCalculateRequest;
 import com.travel.platform.dto.RecommendCalculateResponse;
+import com.travel.platform.dto.RecommendRequestEvent;
 import com.travel.platform.entity.CityLocation;
 import com.travel.platform.entity.Destination;
 import com.travel.platform.entity.EtlJobLog;
@@ -12,6 +14,7 @@ import com.travel.platform.mapper.RecommendResultMapper;
 import com.travel.platform.service.collect.HotelPriceGenerateService;
 import com.travel.platform.service.collect.RouteCollectService;
 import com.travel.platform.service.collect.WeatherCollectService;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 import java.io.BufferedReader;
@@ -20,7 +23,9 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.time.Duration;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.UUID;
 
@@ -34,6 +39,9 @@ public class RecommendService {
     private final RouteCollectService routeCollectService;
     private final WeatherCollectService weatherCollectService;
     private final HotelPriceGenerateService hotelPriceGenerateService;
+    private final RedisCacheService redisCacheService;
+    @Autowired(required = false)
+    private RecommendRequestProducer recommendRequestProducer;
 
     public RecommendService(
             RecommendResultMapper recommendResultMapper,
@@ -42,7 +50,8 @@ public class RecommendService {
             DestinationMapper destinationMapper,
             RouteCollectService routeCollectService,
             WeatherCollectService weatherCollectService,
-            HotelPriceGenerateService hotelPriceGenerateService
+            HotelPriceGenerateService hotelPriceGenerateService,
+            RedisCacheService redisCacheService
     ) {
         this.recommendResultMapper = recommendResultMapper;
         this.jobLogService = jobLogService;
@@ -51,6 +60,7 @@ public class RecommendService {
         this.routeCollectService = routeCollectService;
         this.weatherCollectService = weatherCollectService;
         this.hotelPriceGenerateService = hotelPriceGenerateService;
+        this.redisCacheService = redisCacheService;
     }
 
     public List<RecommendResult> listRecommendResults(
@@ -58,15 +68,25 @@ public class RecommendService {
             LocalDate startDate,
             LocalDate endDate
     ) {
-        return recommendResultMapper.selectRecommendResults(
-                originCity,
-                startDate,
-                endDate
-        );
+        String cacheKey = String.format("recommend:results:%s:%s:%s",
+                originCity, startDate, endDate);
+        return redisCacheService.get(cacheKey, new TypeReference<List<RecommendResult>>() {})
+                .orElseGet(() -> {
+                    List<RecommendResult> results = recommendResultMapper.selectRecommendResults(
+                            originCity, startDate, endDate);
+                    redisCacheService.set(cacheKey, results, Duration.ofMinutes(30));
+                    return results;
+                });
     }
 
     public List<RecommendResult> listByRequestId(String requestId) {
-        return recommendResultMapper.selectByRequestId(requestId);
+        String cacheKey = "recommend:result:" + requestId;
+        return redisCacheService.get(cacheKey, new TypeReference<List<RecommendResult>>() {})
+                .orElseGet(() -> {
+                    List<RecommendResult> results = recommendResultMapper.selectByRequestId(requestId);
+                    redisCacheService.set(cacheKey, results, Duration.ofMinutes(30));
+                    return results;
+                });
     }
 
     public RecommendCalculateResponse calculateRecommend(RecommendCalculateRequest request) {
@@ -76,7 +96,8 @@ public class RecommendService {
                 "build_destination_recommend",
                 "RECOMMEND",
                 "动态目的地推荐评分计算",
-                request.getTravelStartDate()
+                request.getTravelStartDate(),
+                requestId
         );
 
         try {
@@ -98,6 +119,10 @@ public class RecommendService {
             }
 
             // 3. 动态采集路线
+            if (recommendRequestProducer != null) {
+                recommendRequestProducer.publish(buildRecommendRequestEvent(requestId, request, destinations));
+            }
+
             routeCollectService.collectForDestinations(
                     request.getOriginCity(),
                     origin.getLongitude(),
@@ -122,6 +147,8 @@ public class RecommendService {
             // 7. 成功日志
             Integer rowCount = recommendResultMapper.countByRequestId(requestId);
             jobLogService.finishSuccess(jobLog.getId(), rowCount != null ? rowCount : 0);
+            List<RecommendResult> results = recommendResultMapper.selectByRequestId(requestId);
+            redisCacheService.set("recommend:result:" + requestId, results, Duration.ofMinutes(30));
 
             return new RecommendCalculateResponse(requestId, "推荐计算完成");
 
@@ -135,6 +162,30 @@ public class RecommendService {
         String date = request.getTravelStartDate() != null ? request.getTravelStartDate().toString().replace("-", "") : "nodate";
         String shortUuid = UUID.randomUUID().toString().replace("-", "").substring(0, 8);
         return "REQ_" + date + "_" + shortUuid;
+    }
+
+    private RecommendRequestEvent buildRecommendRequestEvent(
+            String requestId,
+            RecommendCalculateRequest request,
+            List<Destination> destinations
+    ) {
+        List<RecommendRequestEvent.DestinationSnapshot> snapshots = destinations.stream()
+                .map(destination -> new RecommendRequestEvent.DestinationSnapshot(
+                        destination.getDestinationCode(),
+                        destination.getDestinationName()
+                ))
+                .toList();
+
+        RecommendRequestEvent event = new RecommendRequestEvent();
+        event.setRequestId(requestId);
+        event.setOriginCity(request.getOriginCity());
+        event.setTravelStartDate(request.getTravelStartDate());
+        event.setTravelEndDate(request.getTravelEndDate());
+        event.setUserBudget(request.getUserBudget());
+        event.setDestinationCount(snapshots.size());
+        event.setDestinations(snapshots);
+        event.setEventTime(LocalDateTime.now());
+        return event;
     }
 
     private void runPythonRecommendScript(RecommendCalculateRequest request, String requestId) {

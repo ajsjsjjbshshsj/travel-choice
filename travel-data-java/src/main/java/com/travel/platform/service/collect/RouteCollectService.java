@@ -9,6 +9,7 @@ import com.travel.platform.entity.RouteDetail;
 import com.travel.platform.mapper.DestinationMapper;
 import com.travel.platform.mapper.RouteMapper;
 import com.travel.platform.service.JobLogService;
+import com.travel.platform.service.RedisCacheService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -29,6 +30,7 @@ public class RouteCollectService {
     private final RouteMapper routeMapper;
     private final AmapRouteClient amapRouteClient;
     private final JobLogService jobLogService;
+    private final RedisCacheService redisCacheService;
 
     /**
      * 采集从出发地到所有活跃目的地的公交路线
@@ -80,6 +82,8 @@ public class RouteCollectService {
             // 清除旧数据后批量写入
             routeMapper.deleteByOriginAndDate(originCity, travelDate.toString());
             routeMapper.batchInsert(routes);
+            redisCacheService.evictByPrefix("recommend:");
+            redisCacheService.evictByPrefix("dashboard:");
 
             log.info("路线采集完成: 出发城市={}, 写入 {} 条路线", originCity, routes.size());
             jobLogService.finishSuccess(jobLog.getId(), routes.size());
@@ -128,6 +132,8 @@ public class RouteCollectService {
             if (!routes.isEmpty()) {
                 routeMapper.deleteByOriginAndDate(originCity, travelDate.toString());
                 routeMapper.batchInsert(routes);
+                redisCacheService.evictByPrefix("recommend:");
+                redisCacheService.evictByPrefix("dashboard:");
             }
 
             log.info("推荐路线采集完成: 写入 {} 条路线", routes.size());

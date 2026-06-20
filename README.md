@@ -1,3 +1,4 @@
+
 # Travel Decision Platform — 旅行智能推荐决策平台
 
 基于多维度加权评分模型的旅行目的地智能推荐系统。整合交通、天气、酒店、景观、预算、拥挤度六大维度，为用户提供数据驱动的旅行决策支持。
@@ -12,6 +13,7 @@
 - [推荐评分模型](#推荐评分模型)
 - [后端接口](#后端接口)
 - [本地启动方式](#本地启动方式)
+- [配置高德地图 API Key](#6-配置高德地图-api-key)
 - [页面截图](#页面截图)
 - [第二版新增能力](#第二版新增能力)
 
@@ -342,12 +344,70 @@ travel-analysis-python/
 
 基础路径: `http://localhost:8080`
 
+所有接口统一返回 `ApiResponse` 信封格式：
+
+```json
+{
+  "code": 200,
+  "message": "success",
+  "data": { ... }
+}
+```
+
 ### 推荐模块 `/api/recommend`
 
 | 方法 | 路径 | 参数 | 说明 |
 |------|------|------|------|
 | `POST` | `/api/recommend/calculate` | Body: `{ originCity, travelStartDate, travelEndDate, userBudget }` | 触发推荐计算（调用 Python 脚本） |
-| `GET` | `/api/recommend/results` | `originCity`, `startDate`, `endDate` | 查询推荐结果 |
+| `GET` | `/api/recommend/results` | `originCity`, `startDate`, `endDate` | 查询推荐结果（Redis 缓存 30 分钟） |
+| `GET` | `/api/recommend/results/by-request` | `requestId` | 按请求 ID 查询推荐结果（Redis 缓存 30 分钟） |
+
+**触发推荐计算：**
+
+```bash
+curl -X POST http://localhost:8080/api/recommend/calculate \
+  -H "Content-Type: application/json" \
+  -d '{
+    "originCity": "北京",
+    "travelStartDate": "2026-07-01",
+    "travelEndDate": "2026-07-05",
+    "userBudget": 5000
+  }'
+```
+
+```json
+{
+  "code": 200,
+  "message": "success",
+  "data": {
+    "requestId": "REQ_20260701_a3b2c1d4",
+    "message": "推荐计算完成"
+  }
+}
+```
+
+**按请求 ID 查询结果：**
+
+```bash
+curl "http://localhost:8080/api/recommend/results/by-request?requestId=REQ_20260701_a3b2c1d4"
+```
+
+```json
+{
+  "code": 200,
+  "message": "success",
+  "data": [
+    {
+      "destinationName": "丽江",
+      "finalScore": 88.50,
+      "recommendRank": 1,
+      "recommendLevel": "HIGH",
+      "estimatedTotalCost": 3850.00,
+      "recommendReason": "景观评分极高, 费用在预算范围内, 旅行期间天气良好"
+    }
+  ]
+}
+```
 
 ### 目的地模块 `/api/destinations`
 
@@ -356,29 +416,58 @@ travel-analysis-python/
 | `GET` | `/api/destinations` | — | 获取所有活跃目的地（按景观评分降序） |
 | `GET` | `/api/destinations/{code}` | `destinationCode` (path) | 获取单个目的地详情 |
 
+```bash
+curl http://localhost:8080/api/destinations
+```
+
+```json
+{
+  "code": 200,
+  "message": "success",
+  "data": [
+    {
+      "destinationCode": "DEST001",
+      "destinationName": "丽江",
+      "province": "云南",
+      "destinationType": "nature",
+      "sceneryScore": 95.00,
+      "popularityScore": 80.00,
+      "facilityScore": 75.00
+    }
+  ]
+}
+```
+
 ### 数据看板 `/api/dashboard`
 
 | 方法 | 路径 | 参数 | 说明 |
 |------|------|------|------|
-| `GET` | `/api/dashboard/stats` | — | 获取看板统计数据 |
+| `GET` | `/api/dashboard/stats` | — | 获取看板统计数据（Redis 缓存 5 分钟） |
 
-**返回结构：**
+```bash
+curl http://localhost:8080/api/dashboard/stats
+```
+
 ```json
 {
-  "destinationCount": 6,
-  "etlTotalCount": 10,
-  "etlSuccessCount": 8,
-  "etlFailedCount": 1,
-  "etlRunningCount": 1,
-  "qualityTotalCount": 4,
-  "qualityPassCount": 3,
-  "qualityWarningCount": 1,
-  "qualityFailedCount": 0,
-  "recommendTotalCount": 30,
-  "avgFinalScore": 78.50,
-  "avgCrowdIndex": 65.20,
-  "topDestinations": [...],
-  "latestQualityResults": [...]
+  "code": 200,
+  "message": "success",
+  "data": {
+    "destinationCount": 6,
+    "etlTotalCount": 10,
+    "etlSuccessCount": 8,
+    "etlFailedCount": 1,
+    "etlRunningCount": 1,
+    "qualityTotalCount": 4,
+    "qualityPassCount": 3,
+    "qualityWarningCount": 1,
+    "qualityFailedCount": 0,
+    "recommendTotalCount": 30,
+    "avgFinalScore": 78.50,
+    "avgCrowdIndex": 65.20,
+    "topDestinations": [...],
+    "latestQualityResults": [...]
+  }
 }
 ```
 
@@ -388,12 +477,50 @@ travel-analysis-python/
 |------|------|------|------|
 | `GET` | `/api/etl/jobs` | — | 获取最近 50 条 ETL 任务日志 |
 
+```bash
+curl http://localhost:8080/api/etl/jobs
+```
+
+```json
+{
+  "code": 200,
+  "message": "success",
+  "data": [
+    {
+      "jobName": "collect_weather_amap",
+      "jobType": "COLLECT",
+      "status": "SUCCESS",
+      "rowCount": 6,
+      "durationSeconds": 3,
+      "requestId": "REQ_20260701_a3b2c1d4"
+    }
+  ]
+}
+```
+
 ### 数据质量 `/api/quality`
 
 | 方法 | 路径 | 参数 | 说明 |
 |------|------|------|------|
 | `POST` | `/api/quality/run` | — | 执行全部数据质量检查 |
 | `GET` | `/api/quality/results` | — | 获取最近 100 条检查结果 |
+
+```bash
+curl -X POST http://localhost:8080/api/quality/run
+```
+
+```json
+{
+  "code": 200,
+  "message": "success",
+  "data": {
+    "total": 9,
+    "passed": 7,
+    "warnings": 1,
+    "failed": 1
+  }
+}
+```
 
 ---
 
@@ -422,7 +549,7 @@ mysql -u root -p < infra/mysql/init.sql
 cp .env.example .env
 ```
 
-编辑 `.env` 填入数据库连接信息：
+编辑 `.env` 填入数据库连接信息和高德 API Key：
 
 ```properties
 MYSQL_USER=root
@@ -430,6 +557,7 @@ MYSQL_PASSWORD=your_password
 MYSQL_HOST=127.0.0.1
 MYSQL_PORT=3306
 MYSQL_DATABASE=travel_decision_platform
+AMAP_API_KEY=your_amap_key_here
 ```
 
 ### 3. 启动后端
@@ -460,6 +588,20 @@ python recommend_score_job.py 北京 2026-07-01 2026-07-05 5000
 ```
 
 也可以通过前端「智能推荐」页面触发（后端会自动调用 Python 脚本）。
+
+### 6. 配置高德地图 API Key
+
+路线规划和天气查询依赖高德开放平台 API，需要申请 Web 服务类型的 Key。
+
+1. 前往 [高德开放平台控制台](https://console.amap.com/dev/key/app) 注册并创建应用
+2. 在应用下添加 Key，服务平台选择 **Web服务**
+3. 将 Key 填入 `.env` 文件的 `AMAP_API_KEY` 字段
+
+```properties
+AMAP_API_KEY=d4dca152db9d7e5700419f1b301659e3
+```
+
+> 高德个人开发者账号有每日调用配额（5000 次/天），生产环境建议使用企业认证账号。
 
 ### 启动顺序
 
@@ -545,3 +687,237 @@ travel-analysis-python/
 ## License
 
 MIT
+---
+
+## V4 Engineering Upgrade
+
+V4 adds the engineering baseline described in `Travel_V4_Development_Plan.md`.
+
+### API Response Standard
+
+All Java controllers now return the same envelope:
+
+```json
+{
+  "code": 200,
+  "message": "success",
+  "data": {}
+}
+```
+
+Errors are handled by `GlobalExceptionHandler` and returned as the same structure with `code` set to `400` or `500`.
+
+### Redis Cache
+
+Redis is configured through:
+
+```text
+REDIS_HOST=127.0.0.1
+REDIS_PORT=6379
+REDIS_PASSWORD=
+REDIS_DATABASE=0
+```
+
+Implemented cache keys:
+
+- `recommend:result:{requestId}` — 按请求 ID 查询推荐结果（TTL 30 min）
+- `recommend:results:{originCity}:{startDate}:{endDate}` — 按条件查询推荐结果（TTL 30 min）
+- `dashboard:stats` — 看板统计数据（TTL 5 min）
+- `city:list:active` — 活跃城市列表（TTL 30 min）
+- `destination:list:active` — 活跃目的地列表（TTL 30 min）
+
+**缓存失效策略：** ETL 数据写入（路线采集、天气采集、酒店价格生成）完成后，自动清除 `recommend:*` 和 `dashboard:*` 前缀的所有缓存键，确保下次查询获取最新数据。
+
+Redis failures are tolerated by the Java service. When Redis is down, APIs fall back to MySQL.
+
+### ETL Traceability
+
+`etl_job_log` now includes:
+
+- `request_id`
+- `duration_seconds`
+
+The ETL monitor page displays request ID, duration, status, row count, trigger type, and error message.
+
+### Data Quality Rules
+
+V4 checks include:
+
+- city coordinates cannot be empty
+- destination coordinates cannot be empty
+- destination `amap_adcode` cannot be empty
+- weather score range must be 0 to 100
+- route distance must be greater than 0
+- route duration must be greater than 0
+- hotel price must be valid
+- recommendation `requestId` cannot be empty
+- recommendation rank cannot duplicate within one request
+
+### Airflow
+
+The DAG lives at:
+
+```text
+infra/airflow/dags/travel_daily_etl_dag.py
+```
+
+Daily flow:
+
+```text
+weather collect -> hotel price generate -> data quality check
+```
+
+### Docker Compose
+
+Start MySQL and Redis:
+
+```bash
+docker compose up -d mysql redis
+```
+
+Start optional Airflow:
+
+```bash
+docker compose --profile airflow up -d
+```
+
+Airflow UI defaults to:
+
+```text
+http://localhost:8088
+admin / admin
+```
+
+### Frontend Adaptation
+
+`travel-web/src/api/request.ts` unwraps `ApiResponse` automatically. Page code receives the `data` payload directly.
+
+### V4 Completion Checklist
+
+- unified API response format
+- global exception handling
+- Redis cache
+- Docker Compose for MySQL, Redis, optional Airflow
+- ETL duration statistics
+- request ID tracing
+- expanded data quality rules
+- Airflow DAG
+- frontend response adaptation
+- README engineering notes
+
+---
+
+## V5 Final Realtime Upgrade
+
+V5 introduces Kafka, Flink, and ClickHouse to provide a realtime big data path for recommendation request analytics.
+
+### Realtime Architecture
+
+```text
+Spring Boot recommendation request
+  -> MySQL dwd_recommend_request_event
+  -> Kafka recommend_request_event
+  -> Flink travel-realtime-flink
+  -> ClickHouse ads_hot_destination_topn
+  -> Spring Boot HotDestinationController
+  -> Dashboard realtime TopN table
+```
+
+### Kafka
+
+Topic:
+
+```text
+recommend_request_event
+```
+
+Spring Boot sends events through `RecommendRequestProducer`. Kafka failure is logged but does not block the normal recommendation calculation.
+
+### Flink
+
+Realtime job:
+
+```text
+travel-realtime-flink
+```
+
+Build the job:
+
+```bash
+cd travel-realtime-flink
+mvn -q -DskipTests package
+```
+
+Start realtime infrastructure:
+
+```bash
+docker compose --profile realtime up -d kafka kafka-topic-init clickhouse flink-jobmanager flink-taskmanager
+```
+
+Submit the job after packaging:
+
+```bash
+docker exec -it travel-flink-jobmanager flink run /opt/flink/usrlib/travel-realtime-flink-0.1.0.jar
+```
+
+Flink UI:
+
+```text
+http://localhost:8081
+```
+
+### ClickHouse
+
+Initialization script:
+
+```text
+infra/clickhouse/init.sql
+```
+
+Realtime ADS table:
+
+```text
+travel_realtime.ads_hot_destination_topn
+```
+
+Spring Boot API:
+
+```text
+GET /api/hot-destinations/topn?limit=10
+```
+
+### Data Warehouse Layering
+
+V5 final layering:
+
+```text
+ODS: raw external/API events
+DWD: dwd_destination, dwd_weather_detail, dwd_route_detail, dwd_hotel_price_detail, dwd_recommend_request_event
+DWS: Flink realtime window aggregation
+ADS: ads_destination_recommend_result, ads_hot_destination_topn
+```
+
+### V5 Database Upgrade
+
+For an existing MySQL database, run:
+
+```bash
+mysql -uroot -p travel_decision_platform < infra/mysql/upgrade_v5.sql
+```
+
+For ClickHouse, run:
+
+```bash
+docker exec -i travel-clickhouse clickhouse-client < infra/clickhouse/init.sql
+```
+
+### V5 Acceptance Checklist
+
+- Kafka service and topic are available
+- Spring Boot publishes recommendation request events
+- MySQL stores `dwd_recommend_request_event`
+- Flink consumes Kafka and calculates hot destination TopN
+- ClickHouse stores `ads_hot_destination_topn`
+- Spring Boot exposes hot destination TopN API
+- Dashboard displays realtime hot destination TopN
+- Docker Compose includes MySQL, Redis, Kafka, ClickHouse, Flink, and optional Airflow

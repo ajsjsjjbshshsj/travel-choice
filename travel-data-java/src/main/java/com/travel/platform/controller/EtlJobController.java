@@ -1,5 +1,6 @@
 package com.travel.platform.controller;
 
+import com.travel.platform.common.result.ApiResponse;
 import com.travel.platform.entity.EtlJobLog;
 import com.travel.platform.service.JobLogService;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -19,7 +20,7 @@ public class EtlJobController {
     }
 
     @GetMapping
-    public List<EtlJobLog> listLatestJobs() {
-        return jobLogService.listLatest();
+    public ApiResponse<List<EtlJobLog>> listLatestJobs() {
+        return ApiResponse.success(jobLogService.listLatest());
     }
 }

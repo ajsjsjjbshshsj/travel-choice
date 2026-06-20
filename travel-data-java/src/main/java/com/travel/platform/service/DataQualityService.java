@@ -9,6 +9,7 @@ import org.springframework.stereotype.Service;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.UUID;
 
 @Service
 public class DataQualityService {
@@ -27,29 +28,29 @@ public class DataQualityService {
         this.jobLogService = jobLogService;
     }
 
-    public void runChecks() {
+    public String runChecks() {
+        String requestId = buildRequestId();
         EtlJobLog jobLog = jobLogService.startJob(
                 "run_data_quality_check",
                 "QUALITY",
-                "数据质量规则检查",
-                LocalDate.now()
+                "data quality rule checks",
+                LocalDate.now(),
+                requestId
         );
 
         try {
-            // 原有规则
-            checkDestinationCodeNotNull();
-            checkHotelPriceValid();
-            checkWeatherScoreRange();
-            checkRecommendScoreRange();
-
-            // 第三版新增规则
+            checkCityLocationNotNull();
             checkDestinationLocationNotNull();
             checkDestinationAdcodeNotNull();
-            checkWeatherDataSource();
-            checkRouteDataSource();
-            checkRouteDistanceAndDuration();
+            checkWeatherScoreRange();
+            checkRouteDistanceValid();
+            checkRouteDurationValid();
+            checkHotelPriceValid();
+            checkRecommendRequestIdNotNull();
+            checkRecommendRankNotDuplicated();
 
             jobLogService.finishSuccess(jobLog.getId(), 9);
+            return requestId;
         } catch (Exception e) {
             jobLogService.finishFailed(jobLog.getId(), e.getMessage());
             throw e;
@@ -58,6 +59,115 @@ public class DataQualityService {
 
     public List<DataQualityResult> listLatest() {
         return dataQualityResultMapper.selectLatest();
+    }
+
+    private void checkCityLocationNotNull() {
+        saveCountRule(
+                "dwd_city_location",
+                "city_location_not_null",
+                "city latitude and longitude cannot be null",
+                "SELECT COUNT(*) FROM dwd_city_location WHERE latitude IS NULL OR longitude IS NULL",
+                "city coordinate missing"
+        );
+    }
+
+    private void checkDestinationLocationNotNull() {
+        saveCountRule(
+                "dwd_destination",
+                "destination_location_not_null",
+                "destination latitude and longitude cannot be null",
+                "SELECT COUNT(*) FROM dwd_destination WHERE latitude IS NULL OR longitude IS NULL",
+                "destination coordinate missing"
+        );
+    }
+
+    private void checkDestinationAdcodeNotNull() {
+        saveCountRule(
+                "dwd_destination",
+                "destination_adcode_not_null",
+                "destination amap_adcode cannot be null",
+                "SELECT COUNT(*) FROM dwd_destination WHERE amap_adcode IS NULL OR amap_adcode = ''",
+                "destination amap_adcode missing"
+        );
+    }
+
+    private void checkWeatherScoreRange() {
+        saveCountRule(
+                "dwd_weather_detail",
+                "weather_score_range",
+                "weather score must be between 0 and 100",
+                "SELECT COUNT(*) FROM dwd_weather_detail WHERE weather_score < 0 OR weather_score > 100",
+                "weather score out of range"
+        );
+    }
+
+    private void checkRouteDistanceValid() {
+        saveCountRule(
+                "dwd_route_detail",
+                "route_distance_valid",
+                "route distance must be greater than 0",
+                "SELECT COUNT(*) FROM dwd_route_detail WHERE distance_km IS NULL OR distance_km <= 0",
+                "route distance invalid"
+        );
+    }
+
+    private void checkRouteDurationValid() {
+        saveCountRule(
+                "dwd_route_detail",
+                "route_duration_valid",
+                "route duration must be greater than 0",
+                "SELECT COUNT(*) FROM dwd_route_detail WHERE duration_minutes IS NULL OR duration_minutes <= 0",
+                "route duration invalid"
+        );
+    }
+
+    private void checkHotelPriceValid() {
+        saveCountRule(
+                "dwd_hotel_price_detail",
+                "hotel_price_valid",
+                "hotel price must be greater than or equal to 0",
+                "SELECT COUNT(*) FROM dwd_hotel_price_detail WHERE avg_price IS NULL OR avg_price < 0",
+                "hotel price invalid"
+        );
+    }
+
+    private void checkRecommendRequestIdNotNull() {
+        saveCountRule(
+                "ads_destination_recommend_result",
+                "recommend_request_id_not_null",
+                "recommend requestId cannot be null",
+                "SELECT COUNT(*) FROM ads_destination_recommend_result WHERE request_id IS NULL OR request_id = ''",
+                "recommend result requestId missing"
+        );
+    }
+
+    private void checkRecommendRankNotDuplicated() {
+        saveCountRule(
+                "ads_destination_recommend_result",
+                "recommend_rank_not_duplicated",
+                "recommend rank cannot duplicate within one requestId",
+                """
+                SELECT COUNT(*) FROM (
+                    SELECT request_id, recommend_rank
+                    FROM ads_destination_recommend_result
+                    WHERE request_id IS NOT NULL AND request_id <> ''
+                    GROUP BY request_id, recommend_rank
+                    HAVING COUNT(*) > 1
+                ) t
+                """,
+                "duplicated recommend rank"
+        );
+    }
+
+    private void saveCountRule(
+            String tableName,
+            String ruleName,
+            String ruleDesc,
+            String sql,
+            String errorMessage
+    ) {
+        Integer count = jdbcTemplate.queryForObject(sql, Integer.class);
+        saveResult(tableName, ruleName, ruleDesc, count == null ? 0 : count, errorMessage);
     }
 
     private void saveResult(
@@ -73,7 +183,7 @@ public class DataQualityService {
         result.setRuleDesc(ruleDesc);
         result.setErrorCount(errorCount);
         result.setCheckTime(LocalDateTime.now());
-        result.setErrorMessage(errorMessage);
+        result.setErrorMessage(errorCount > 0 ? errorMessage : null);
 
         if (errorCount == 0) {
             result.setCheckResult("PASS");
@@ -86,142 +196,8 @@ public class DataQualityService {
         dataQualityResultMapper.insert(result);
     }
 
-    // ===== 原有规则 =====
-
-    private void checkDestinationCodeNotNull() {
-        Integer count = jdbcTemplate.queryForObject(
-                "SELECT COUNT(*) FROM dwd_destination WHERE destination_code IS NULL OR destination_code = ''",
-                Integer.class
-        );
-
-        saveResult(
-                "dwd_destination",
-                "destination_code_not_null",
-                "目的地编码不能为空",
-                count == null ? 0 : count,
-                count != null && count > 0 ? "存在目的地编码为空的数据" : null
-        );
-    }
-
-    private void checkHotelPriceValid() {
-        Integer count = jdbcTemplate.queryForObject(
-                "SELECT COUNT(*) FROM dwd_hotel_price_detail WHERE avg_price < 0",
-                Integer.class
-        );
-
-        saveResult(
-                "dwd_hotel_price_detail",
-                "hotel_price_valid",
-                "酒店价格不能小于0",
-                count == null ? 0 : count,
-                count != null && count > 0 ? "存在酒店价格小于0的数据" : null
-        );
-    }
-
-    private void checkWeatherScoreRange() {
-        Integer count = jdbcTemplate.queryForObject(
-                "SELECT COUNT(*) FROM dwd_weather_detail WHERE weather_score < 0 OR weather_score > 100",
-                Integer.class
-        );
-
-        saveResult(
-                "dwd_weather_detail",
-                "weather_score_range",
-                "天气评分必须在0到100之间",
-                count == null ? 0 : count,
-                count != null && count > 0 ? "存在天气评分越界数据" : null
-        );
-    }
-
-    private void checkRecommendScoreRange() {
-        Integer count = jdbcTemplate.queryForObject(
-                "SELECT COUNT(*) FROM ads_destination_recommend_result WHERE final_score < 0 OR final_score > 100",
-                Integer.class
-        );
-
-        saveResult(
-                "ads_destination_recommend_result",
-                "final_score_range",
-                "推荐综合评分必须在0到100之间",
-                count == null ? 0 : count,
-                count != null && count > 0 ? "存在推荐分越界数据" : null
-        );
-    }
-
-    // ===== 第三版新增规则 =====
-
-    private void checkDestinationLocationNotNull() {
-        Integer count = jdbcTemplate.queryForObject(
-                "SELECT COUNT(*) FROM dwd_destination WHERE latitude IS NULL OR longitude IS NULL",
-                Integer.class
-        );
-
-        saveResult(
-                "dwd_destination",
-                "destination_location_not_null",
-                "目的地经纬度不能为空",
-                count == null ? 0 : count,
-                count != null && count > 0 ? "存在目的地经纬度为空的数据" : null
-        );
-    }
-
-    private void checkDestinationAdcodeNotNull() {
-        Integer count = jdbcTemplate.queryForObject(
-                "SELECT COUNT(*) FROM dwd_destination WHERE amap_adcode IS NULL OR amap_adcode = ''",
-                Integer.class
-        );
-
-        saveResult(
-                "dwd_destination",
-                "destination_adcode_not_null",
-                "目的地 amap_adcode 不能为空",
-                count == null ? 0 : count,
-                count != null && count > 0 ? "存在目的地 amap_adcode 为空的数据" : null
-        );
-    }
-
-    private void checkWeatherDataSource() {
-        Integer count = jdbcTemplate.queryForObject(
-                "SELECT COUNT(*) FROM dwd_weather_detail WHERE data_source IS NULL OR data_source = ''",
-                Integer.class
-        );
-
-        saveResult(
-                "dwd_weather_detail",
-                "weather_data_source_valid",
-                "天气数据 data_source 必须是 amap_weather",
-                count == null ? 0 : count,
-                count != null && count > 0 ? "存在天气数据 data_source 为空或异常的数据" : null
-        );
-    }
-
-    private void checkRouteDataSource() {
-        Integer count = jdbcTemplate.queryForObject(
-                "SELECT COUNT(*) FROM dwd_route_detail WHERE data_source IS NULL OR data_source = ''",
-                Integer.class
-        );
-
-        saveResult(
-                "dwd_route_detail",
-                "route_data_source_valid",
-                "路线数据 data_source 必须是 amap_route",
-                count == null ? 0 : count,
-                count != null && count > 0 ? "存在路线数据 data_source 为空或异常的数据" : null
-        );
-    }
-
-    private void checkRouteDistanceAndDuration() {
-        Integer count = jdbcTemplate.queryForObject(
-                "SELECT COUNT(*) FROM dwd_route_detail WHERE distance_km <= 0 OR duration_minutes <= 0",
-                Integer.class
-        );
-
-        saveResult(
-                "dwd_route_detail",
-                "route_distance_duration_valid",
-                "路线距离和耗时必须大于0",
-                count == null ? 0 : count,
-                count != null && count > 0 ? "存在路线距离或耗时异常的数据" : null
-        );
+    private String buildRequestId() {
+        String shortUuid = UUID.randomUUID().toString().replace("-", "").substring(0, 8);
+        return "QUALITY_" + LocalDate.now().toString().replace("-", "") + "_" + shortUuid;
     }
 }

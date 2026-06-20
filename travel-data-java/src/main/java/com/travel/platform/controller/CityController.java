@@ -1,5 +1,6 @@
 package com.travel.platform.controller;
 
+import com.travel.platform.common.result.ApiResponse;
 import com.travel.platform.entity.CityLocation;
 import com.travel.platform.service.CityLocationService;
 import lombok.RequiredArgsConstructor;
@@ -17,7 +18,7 @@ public class CityController {
     private final CityLocationService cityLocationService;
 
     @GetMapping
-    public List<CityLocation> listCities() {
-        return cityLocationService.listAllActiveCities();
+    public ApiResponse<List<CityLocation>> listCities() {
+        return ApiResponse.success(cityLocationService.listAllActiveCities());
     }
 }

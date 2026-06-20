@@ -9,6 +9,22 @@ spring:
     username: ${MYSQL_USER:root}
     password: ${MYSQL_PASSWORD:1234}
     driver-class-name: com.mysql.cj.jdbc.Driver
+  data:
+    redis:
+      host: ${REDIS_HOST:127.0.0.1}
+      port: ${REDIS_PORT:6379}
+      password: ${REDIS_PASSWORD:}
+      database: ${REDIS_DATABASE:0}
+      timeout: 2s
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:127.0.0.1:9092}
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.apache.kafka.common.serialization.StringSerializer
+      properties:
+        delivery.timeout.ms: 3000
+        request.timeout.ms: 1000
+        max.block.ms: 1000
 
 mybatis:
   configuration:
@@ -18,3 +34,11 @@ api:
   amap:
     key: ${AMAP_KEY:d4dca152db9d7e5700419f1b301659e3}
     host: ${AMAP_HOST:https://restapi.amap.com}
+
+realtime:
+  kafka:
+    recommend-request-topic: ${RECOMMEND_REQUEST_TOPIC:recommend_request_event}
+  clickhouse:
+    url: ${CLICKHOUSE_URL:jdbc:clickhouse://127.0.0.1:8123/travel_realtime}
+    username: ${CLICKHOUSE_USER:default}
+    password: ${CLICKHOUSE_PASSWORD:}

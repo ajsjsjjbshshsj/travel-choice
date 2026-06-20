@@ -9,6 +9,7 @@ import com.travel.platform.entity.WeatherDetail;
 import com.travel.platform.mapper.DestinationMapper;
 import com.travel.platform.mapper.WeatherMapper;
 import com.travel.platform.service.JobLogService;
+import com.travel.platform.service.RedisCacheService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -30,6 +31,7 @@ public class WeatherCollectService {
     private final WeatherMapper weatherMapper;
     private final AmapWeatherClient amapWeatherClient;
     private final JobLogService jobLogService;
+    private final RedisCacheService redisCacheService;
 
     /**
      * 采集所有活跃目的地的天气预报数据
@@ -134,6 +136,8 @@ public class WeatherCollectService {
         // 先删除旧数据，再批量写入
         weatherMapper.deleteByDestinationCode(dest.getDestinationCode());
         weatherMapper.batchInsert(weatherList);
+        redisCacheService.evictByPrefix("recommend:");
+        redisCacheService.evictByPrefix("dashboard:");
 
         log.info("目的地 {}({}) 写入 {} 条天气预报数据",
                 dest.getDestinationName(), dest.getDestinationCode(), weatherList.size());

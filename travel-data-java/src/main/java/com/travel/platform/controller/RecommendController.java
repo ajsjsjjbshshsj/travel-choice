@@ -1,5 +1,6 @@
 package com.travel.platform.controller;
 
+import com.travel.platform.common.result.ApiResponse;
 import com.travel.platform.dto.RecommendCalculateRequest;
 import com.travel.platform.dto.RecommendCalculateResponse;
 import com.travel.platform.entity.RecommendResult;
@@ -22,7 +23,7 @@ public class RecommendController {
     }
 
     @GetMapping("/results")
-    public List<RecommendResult> listRecommendResults(
+    public ApiResponse<List<RecommendResult>> listRecommendResults(
             @RequestParam String originCity,
 
             @RequestParam
@@ -33,16 +34,16 @@ public class RecommendController {
             @DateTimeFormat(pattern = "yyyy-MM-dd")
             LocalDate endDate
     ) {
-        return recommendService.listRecommendResults(originCity, startDate, endDate);
+        return ApiResponse.success(recommendService.listRecommendResults(originCity, startDate, endDate));
     }
 
     @PostMapping("/calculate")
-    public RecommendCalculateResponse calculateRecommend(@RequestBody RecommendCalculateRequest request) {
-        return recommendService.calculateRecommend(request);
+    public ApiResponse<RecommendCalculateResponse> calculateRecommend(@RequestBody RecommendCalculateRequest request) {
+        return ApiResponse.success(recommendService.calculateRecommend(request));
     }
 
     @GetMapping("/calculate")
-    public RecommendCalculateResponse calculateRecommendGet(
+    public ApiResponse<RecommendCalculateResponse> calculateRecommendGet(
             @RequestParam(defaultValue = "北京") String originCity,
             @RequestParam(defaultValue = "2026-07-01") @DateTimeFormat(pattern = "yyyy-MM-dd") LocalDate travelStartDate,
             @RequestParam(defaultValue = "2026-07-05") @DateTimeFormat(pattern = "yyyy-MM-dd") LocalDate travelEndDate,
@@ -53,11 +54,11 @@ public class RecommendController {
         request.setTravelStartDate(travelStartDate);
         request.setTravelEndDate(travelEndDate);
         request.setUserBudget(userBudget);
-        return recommendService.calculateRecommend(request);
+        return ApiResponse.success(recommendService.calculateRecommend(request));
     }
 
     @GetMapping("/results/by-request")
-    public List<RecommendResult> listByRequestId(@RequestParam String requestId) {
-        return recommendService.listByRequestId(requestId);
+    public ApiResponse<List<RecommendResult>> listByRequestId(@RequestParam String requestId) {
+        return ApiResponse.success(recommendService.listByRequestId(requestId));
     }
 }

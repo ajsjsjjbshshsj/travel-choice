@@ -23,4 +23,6 @@ public class DashboardStats {
     private BigDecimal avgCrowdIndex;
     private List<Destination> topDestinations;
     private List<DataQualityResult> latestQualityResults;
+    private String redisStatus;
+    private String schedulerStatus;
 }

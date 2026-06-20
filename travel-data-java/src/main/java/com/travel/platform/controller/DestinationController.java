@@ -1,5 +1,6 @@
 package com.travel.platform.controller;
 
+import com.travel.platform.common.result.ApiResponse;
 import com.travel.platform.entity.Destination;
 import com.travel.platform.service.DestinationService;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -20,12 +21,12 @@ public class DestinationController {
     }
 
     @GetMapping("/{destinationCode}")
-    public Destination getDestinationByCode(@PathVariable String destinationCode) {
-        return destinationService.getByCode(destinationCode);
+    public ApiResponse<Destination> getDestinationByCode(@PathVariable String destinationCode) {
+        return ApiResponse.success(destinationService.getByCode(destinationCode));
     }
 
     @GetMapping
-    public List<Destination> listDestinations() {
-        return destinationService.listDestinations();
+    public ApiResponse<List<Destination>> listDestinations() {
+        return ApiResponse.success(destinationService.listDestinations());
     }
 }
